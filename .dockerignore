@@ -1,0 +1,11 @@
+.git
+.next
+node_modules
+backend
+db
+download
+examples
+mini-services
+workspace-*.tar
+dev.log
+server.log

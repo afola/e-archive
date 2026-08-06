@@ -1,0 +1,54 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: archives-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: archives_bancaires
+      POSTGRES_USER: archives_user
+      POSTGRES_PASSWORD: archives_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U archives_user -d archives_bancaires"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - archives-network
+
+  # Spring Boot Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: archives-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: archives_bancaires
+      DB_USERNAME: archives_user
+      DB_PASSWORD: archives_password
+      JWT_SECRET: dGhpc0lzQVZlcnlMb25nU2VjcmV0S2V5Rm9ySldUVG9rZW5HZW5lcmF0aW9uVGhhdFNob3VsZEJlQXRMZWFzdDI1NkJpdHNMb25nRm9yU2VjdXJpdHlBbmRJc1NlY3VyZQ==
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    networks:
+      - archives-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  archives-network:
+    driver: bridge

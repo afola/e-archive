@@ -1,0 +1,82 @@
+name: earchive-platform
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_BACKEND_URL: http://localhost:8080
+    container_name: earchive-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      BACKEND_INTERNAL_URL: http://api:8080
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:8080
+    ports:
+      - "3000:3000"
+    networks:
+      - earchive-network
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: earchive-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: archives_bancaires
+      DB_USERNAME: archives_user
+      DB_PASSWORD: archives_password
+      JWT_SECRET: dGhpc0lzQVZlcnlMb25nU2VjcmV0S2V5Rm9ySldUVG9rZW5HZW5lcmF0aW9uVGhhdFNob3VsZEJlQXRMZWFzdDI1NkJpdHNMb25nRm9yU2VjdXJpdHlBbmRJc1NlY3VyZQ==
+      APP_ALLOWED_ORIGINS: http://localhost:3000
+      APP_UPLOAD_DIR: /app/uploads
+      SERVER_PORT: 8080
+    volumes:
+      - earchive_api_uploads:/app/uploads
+    ports:
+      - "8080:8080"
+    networks:
+      - earchive-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: earchive-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: archives_bancaires
+      POSTGRES_USER: archives_user
+      POSTGRES_PASSWORD: archives_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - earchive_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U archives_user -d archives_bancaires"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - earchive-network
+
+volumes:
+  earchive_api_uploads:
+    driver: local
+  earchive_postgres_data:
+    driver: local
+
+networks:
+  earchive-network:
+    driver: bridge

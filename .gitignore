@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Build artifacts
+backend/target/
+mini-services/*/node_modules/
+
+# Database
+db/*.db
+db/*.db-journal
+prisma/*.db
+
+# Env
+.env
+.env*.local
+
+# Logs
+dev.log
+server.log
+*.log
+
+# Archives / temp
+workspace-*.tar
+
+# OS
+.DS_Store

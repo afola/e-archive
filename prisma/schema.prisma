@@ -1,0 +1,416 @@
+// Banking Archive Management System - Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USER & RBAC ====================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  firstName     String?
+  lastName      String?
+  avatar        String?
+  phone         String?
+  department    String?
+  position      String?
+  agencyId      String?
+  roleId        String
+  passwordHash  String
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  role          Role      @relation(fields: [roleId], references: [id])
+  agency        Agency?   @relation(fields: [agencyId], references: [id])
+  auditLogs     AuditLog[]
+  movements     Movement[]
+  workflows     WorkflowRequest[]
+  comments      Comment[]
+  notifications Notification[]
+  
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  level       Int      @default(0)
+  permissions String   // JSON array of permission codes
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  users       User[]
+  
+  @@map("roles")
+}
+
+model Agency {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  address     String?
+  city        String?
+  region      String?
+  phone       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  users       User[]
+  archives    Archive[]
+  locations   Location[]
+  
+  @@map("agencies")
+}
+
+// ==================== ARCHIVE MANAGEMENT ====================
+
+model ArchiveType {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  name           String
+  description    String?
+  retentionYears Int
+  category       String?
+  subCategory    String?
+  color          String?  @default("#3b82f6")
+  icon           String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  archives       Archive[]
+  
+  @@map("archive_types")
+}
+
+model Archive {
+  id                String   @id @default(cuid())
+  reference         String   @unique
+  title             String
+  description       String?
+  typeId            String
+  categoryId        String?
+  subCategoryId     String?
+  
+  // Client/Account info
+  clientName        String?
+  clientNumber      String?
+  accountNumber     String?
+  dossierNumber     String?
+  
+  // Ownership
+  agencyId          String
+  department        String?
+  ownerService      String?
+  
+  // Dates
+  documentDate      DateTime?
+  archiveDate       DateTime  @default(now())
+  retentionEndDate  DateTime
+  destructionDate   DateTime?
+  
+  // Status & Classification
+  status            String   @default("ACTIVE") // ACTIVE, ON_LOAN, IN_TRANSFER, PENDING_DESTRUCTION, DESTROYED, ARCHIVED
+  confidentiality   String   @default("NORMAL") // PUBLIC, NORMAL, CONFIDENTIAL, SECRET, TOP_SECRET
+  version           Int      @default(1)
+  parentArchiveId   String?
+  
+  // Physical location
+  locationId        String?
+  boxNumber         String?
+  physicalNotes     String?
+  
+  // Digital
+  hasDigitalCopy    Boolean  @default(false)
+  filePath          String?
+  fileSize          Int?
+  fileName          String?
+  mimeType          String?
+  
+  // Metadata
+  keywords          String?  // JSON array
+  customFields      String?  // JSON object
+  tags              String?  // JSON array
+  
+  // Tracking
+  createdBy         String?
+  lastModifiedBy    String?
+  lastActionAt      DateTime?
+  lastActionType    String?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  type              ArchiveType    @relation(fields: [typeId], references: [id])
+  agency            Agency         @relation(fields: [agencyId], references: [id])
+  location          Location?      @relation(fields: [locationId], references: [id])
+  parent            Archive?       @relation("ArchiveHierarchy", fields: [parentArchiveId], references: [id])
+  children          Archive[]      @relation("ArchiveHierarchy")
+  movements         Movement[]
+  workflowRequests  WorkflowRequest[]
+  auditLogs         AuditLog[]
+  comments          Comment[]
+  files             ArchiveFile[]
+  
+  @@index([reference])
+  @@index([clientName])
+  @@index([accountNumber])
+  @@index([status])
+  @@index([retentionEndDate])
+  @@map("archives")
+}
+
+model ArchiveFile {
+  id            String   @id @default(cuid())
+  archiveId     String
+  name          String
+  originalName  String
+  mimeType      String
+  size          Int
+  path          String
+  checksum      String?
+  uploadedBy    String
+  uploadedAt    DateTime @default(now())
+  version       Int      @default(1)
+  isActive      Boolean  @default(true)
+  
+  archive       Archive  @relation(fields: [archiveId], references: [id])
+  
+  @@map("archive_files")
+}
+
+model Location {
+  id          String   @id @default(cuid())
+  agencyId    String
+  site        String
+  building    String?
+  room        String?
+  shelf       String?
+  box         String?
+  code        String   @unique
+  description String?
+  capacity    Int?
+  currentLoad Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  agency      Agency   @relation(fields: [agencyId], references: [id])
+  archives    Archive[]
+  
+  @@map("locations")
+}
+
+// ==================== MOVEMENTS ====================
+
+model Movement {
+  id              String   @id @default(cuid())
+  archiveId       String
+  type            String   // ENTRY, EXIT, RETURN, TRANSFER, DESTRUCTION, QUARANTINE
+  fromLocationId  String?
+  toLocationId    String?
+  fromAgencyId    String?
+  toAgencyId      String?
+  
+  reason          String?
+  notes           String?
+  
+  requestedBy     String
+  requestedAt     DateTime @default(now())
+  approvedBy      String?
+  approvedAt      DateTime?
+  executedBy      String?
+  executedAt      DateTime?
+  
+  status          String   @default("PENDING") // PENDING, APPROVED, EXECUTED, CANCELLED
+  receiptNumber   String?  @unique
+  expectedReturnDate DateTime?
+  actualReturnDate DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  archive         Archive  @relation(fields: [archiveId], references: [id])
+  user            User     @relation(fields: [requestedBy], references: [id])
+  
+  @@index([archiveId])
+  @@index([type])
+  @@index([status])
+  @@map("movements")
+}
+
+// ==================== WORKFLOW ====================
+
+model WorkflowRequest {
+  id              String   @id @default(cuid())
+  archiveId       String?
+  type            String   // BORROW, CONSULTATION, DESTRUCTION, TRANSFER, MODIFICATION
+  title           String
+  description     String?
+  priority        String   @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  
+  requesterId     String
+  requestedAt     DateTime @default(now())
+  
+  currentStep     Int      @default(1)
+  totalSteps      Int      @default(3)
+  
+  status          String   @default("DRAFT") // DRAFT, SUBMITTED, IN_VALIDATION, APPROVED, REJECTED, EXECUTED, CLOSED
+  
+  // Approval chain
+  approvedByN1    String?
+  approvedAtN1    DateTime?
+  commentN1       String?
+  
+  approvedByCompliance String?
+  approvedAtCompliance DateTime?
+  commentCompliance String?
+  
+  approvedByManager   String?
+  approvedAtManager   DateTime?
+  commentManager      String?
+  
+  executedBy      String?
+  executedAt      DateTime?
+  executionNotes  String?
+  
+  // SLA
+  dueDate         DateTime?
+  completedAt     DateTime?
+  
+  // Additional data
+  requestData     String?  // JSON object for additional request details
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  archive         Archive? @relation(fields: [archiveId], references: [id])
+  requester       User     @relation(fields: [requesterId], references: [id])
+  comments        Comment[]
+  
+  @@index([type])
+  @@index([status])
+  @@index([requesterId])
+  @@map("workflow_requests")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  archiveId String?
+  workflowId String?
+  authorId  String
+  parentId  String?
+  isInternal Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  archive   Archive?  @relation(fields: [archiveId], references: [id])
+  workflow  WorkflowRequest? @relation(fields: [workflowId], references: [id])
+  author    User      @relation(fields: [authorId], references: [id])
+  replies   Comment[] @relation("CommentReplies")
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  
+  @@map("comments")
+}
+
+// ==================== AUDIT ====================
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  archiveId   String?
+  action      String   // CREATE, READ, UPDATE, DELETE, DOWNLOAD, PRINT, MOVE, BORROW, RETURN, APPROVE, REJECT
+  entityType  String
+  entityId    String
+  details     String?  // JSON object
+  ipAddress   String?
+  userAgent   String?
+  sessionId   String?
+  isSensitive Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  user        User     @relation(fields: [userId], references: [id])
+  archive     Archive? @relation(fields: [archiveId], references: [id])
+  
+  @@index([userId])
+  @@index([archiveId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==================== NOTIFICATIONS ====================
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   // ALERT, INFO, WARNING, SUCCESS
+  title       String
+  message     String
+  link        String?
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  
+  user        User     @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// ==================== CONFIGURATION ====================
+
+model RetentionRule {
+  id             String   @id @default(cuid())
+  archiveTypeId  String?
+  name           String
+  description    String?
+  retentionYears Int
+  alertDays      Int      @default(90) // Days before expiration to alert
+  autoDestroy    Boolean  @default(false)
+  transferDestination String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  @@map("retention_rules")
+}
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  category    String?
+  updatedAt   DateTime @updatedAt
+  
+  @@map("system_configs")
+}
+
+model SavedSearch {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  query       String   // JSON object with search parameters
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("saved_searches")
+}
